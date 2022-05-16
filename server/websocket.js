@@ -1,5 +1,6 @@
 const ws = require('ws');
-const {MongoClient} = require('mongodb');
+const bcrypt = require('bcryptjs');
+const {MongoClient, ObjectId} = require('mongodb');
 
 const client = new MongoClient("mongodb://localhost:27018,localhost:27019,localhost:27020/?replicaSet=mongo-repl", { useUnifiedTopology: true}, { useNewUrlParser: true }, { connectTimeoutMS: 30000 }, { keepAlive: 1})
 client.connect()
@@ -15,6 +16,7 @@ var streams = new Object()
 
 
 wss.on('connection', function connection(ws) {
+    console.log("connect")
     ws.on('message', function (message) {
         
         var message = JSON.parse(message);
@@ -26,14 +28,67 @@ wss.on('connection', function connection(ws) {
                     message: "OK",
                     event: 'message_bot'
                 }))
+                break 
+            case 'createUser':
+                let elements_create_user = parse_data(message.path)
+                database.collection("system_users").findOne({"email": message.email}, function (err, data) {
+                    if (err) return console.log("error");
+                    if (data === null) {
+                        console.log("New User")
+                        const hashPassword = bcrypt.hashSync(message.password, 7);
+                        let data = {email: message.email, password: hashPassword, role: "USER"};
+                        database.collection("system_users").insertOne(data, function(err, result){
+                            
+                            if(err){ 
+                                return console.log(err);
+                            }
+
+                            message.data._id = result.insertedId
+                            database.collection(elements_create_user.name_collection).insertOne(message.data)
+                            const message_bot = {
+                                message: `Пользователь создан - ${result.insertedId}`,
+                                event: 'message_bot'
+                            }
+                            ws.send(JSON.stringify(message_bot))
+                        });
+
+
+                    } else {
+                        console.log("User exist")
+                        const message_bot = {
+                            message: `Пользователь ${message.username} уже существует`,
+                            event: 'message_bot'
+                        }
+                        ws.send(JSON.stringify(message_bot))
+                    }
+                })
                 break
-                
+            case 'authUser':
+                database.collection("system_users").findOne({"email": message.email}, function (err, data) {
+                        if (err) return console.log("error");
+                        const validPassword = bcrypt.compareSync(message.password, data.password)
+                        
+                        if (validPassword) {
+                            const message_bot = {
+                                message: (data._id).toString(),
+                                event: 'message_bot'
+                            }
+                            ws.send(JSON.stringify(message_bot))
+                        } else {
+                            const message_bot = {
+                                message: null,
+                                event: 'message_bot'
+                            }
+                            ws.send(JSON.stringify(message_bot))
+                        }
+                })
+                break
             case 'observeSingleEvent':
                 console.log("observeSingleEvent")
                 let elements = parse_data(message.path)
 
                 if (elements.path_value) {
-                    database.collection(elements.name_collection).distinct(elements.path_value, {"_id": elements.id}, function (err, data) {
+                    database.collection(elements.name_collection).distinct(elements.path_value, {"_id": ObjectId(elements.id)}, function (err, data) {
                         if (err) return console.log("error");
                         if (data.length === 0) return console.log("no data");
                         const message_bot = {
@@ -43,7 +98,7 @@ wss.on('connection', function connection(ws) {
                         ws.send(JSON.stringify(message_bot))
                     });
                 } else {
-                    database.collection(elements.name_collection).findOne({"_id": elements.id}, function (err, data) {
+                    database.collection(elements.name_collection).findOne({"_id": ObjectId(elements.id)}, function (err, data) {
                         if (err) return console.log("error");
                         if (data.length === 0) return console.log("no data");
                         const message_bot = {
@@ -68,7 +123,7 @@ wss.on('connection', function connection(ws) {
                     filter = [{
                         $match: {
                             $and: [
-                                {"documentKey._id": elements_observe.id},
+                                {"documentKey._id": ObjectId(elements_observe.id)},
                                 { [string]: { $exists: true } },
                                 { operationType: "update" }
                             ]
@@ -78,7 +133,7 @@ wss.on('connection', function connection(ws) {
                     filter = [{
                         $match: {
                             $and: [
-                                {"documentKey._id": elements_observe.id},
+                                {"documentKey._id": ObjectId(elements_observe.id)},
                                 { operationType: "update" }
                             ]
                         }
@@ -129,16 +184,16 @@ wss.on('connection', function connection(ws) {
                 console.log("setValue")
                 let elements_setValue = parse_data(message.path)
 
-                database.collection(elements_setValue.name_collection).findOne({"_id": elements_setValue.id}, function (err, data) {
+                database.collection(elements_setValue.name_collection).findOne({"_id": ObjectId(elements_setValue.id)}, function (err, data) {
                     if (err) return console.log("error");
                     if (data === null) {
                         console.log("NEW")
-                        database.collection(elements_setValue.name_collection).insertOne({_id: elements_setValue.id, name: message.username})
+                        database.collection(elements_setValue.name_collection).insertOne({_id: ObjectId(elements_setValue.id), name: message.username})
                         return
                     };
                     console.log("OLD")
                     database.collection(elements_setValue.name_collection).updateOne(
-                        {_id: elements_setValue.id}, 
+                        {_id: ObjectId(elements_setValue.id)}, 
                         { $set: {[elements_setValue.path_value]: message.username}},
                         function(err, result){    
                                 console.log(result);
@@ -151,11 +206,11 @@ wss.on('connection', function connection(ws) {
                 console.log("removeValue")
                 let elements_removeValue = parse_data(message.path)
                 if (elements_removeValue.path_value) {
-                    database.collection(elements_removeValue.name_collection).updateOne({_id: elements_removeValue.id},{$unset:{
+                    database.collection(elements_removeValue.name_collection).updateOne({_id: ObjectId(elements_removeValue.id)},{$unset:{
                         [elements_removeValue.path_value]:""
                     }})
                 } else {
-                    database.collection(elements_removeValue.name_collection).deleteOne( {"_id": elements_removeValue.id});
+                    database.collection(elements_removeValue.name_collection).deleteOne( {_id: ObjectId(elements_removeValue.id)});
                 } 
                 break
                 
