@@ -2,7 +2,7 @@ const ws = require('ws');
 const bcrypt = require('bcryptjs');
 const {MongoClient, ObjectId} = require('mongodb');
 
-const client = new MongoClient("mongodb://localhost:27018,localhost:27019,localhost:27020/?replicaSet=mongo-repl", { useUnifiedTopology: true}, { useNewUrlParser: true }, { connectTimeoutMS: 30000 }, { keepAlive: 1})
+const client = new MongoClient("mongodb://mongo-rs0-1,mongo-rs0-2,mongo-rs0-3/?replicaSet=mongo-repl", { useUnifiedTopology: true}, { useNewUrlParser: true }, { connectTimeoutMS: 30000 }, { keepAlive: 1})
 client.connect()
 
 const wss = new ws.Server({
@@ -13,7 +13,7 @@ const database = client.db("websocket")
 
 var webSockets = new Object()
 var streams = new Object()
-
+console.log('Version: ' + process.version);
 
 wss.on('connection', function connection(ws) {
     console.log("connect")
