@@ -45,5 +45,5 @@ services:
     build: .
     ports:
       - '5000:5000'
-    links:
+    depends_on:
       - "setup-rs"
